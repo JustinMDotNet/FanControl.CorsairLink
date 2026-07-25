@@ -74,19 +74,45 @@ public sealed class PerFanGradientFlowLightingEffect : ILinkHubLightingEffect
         var nextIndex = (index + 1) % count;
         var fraction = scaled - Math.Floor(scaled);
 
-        var from = _colors[index];
-        var to = _colors[nextIndex];
-
-        return new RgbColor(
-            Blend(from.R, to.R, fraction),
-            Blend(from.G, to.G, fraction),
-            Blend(from.B, to.B, fraction));
+        return BlendHsv(_colors[index], _colors[nextIndex], fraction);
     }
 
-    private byte Blend(byte from, byte to, double fraction)
+    // Interpolate in HSV so the hue rotates around the color wheel during a
+    // transition (e.g. cyan -> magenta passes through blue) instead of fading
+    // through a desaturated RGB midpoint. The palette stops themselves are
+    // returned exactly (fraction 0 or 1).
+    private RgbColor BlendHsv(RgbColor from, RgbColor to, double fraction)
     {
-        var value = (int)Math.Round((from + (to - from) * fraction) * _brightness);
-        return (byte)Utils.Clamp(value, 0, 255);
+        var (h1, s1, v1) = RgbToHsv(from);
+        var (h2, s2, v2) = RgbToHsv(to);
+
+        // a desaturated endpoint (e.g. white) has no meaningful hue; borrow the
+        // other's so the transition rotates saturation rather than jumping hue
+        if (s1 <= 0)
+        {
+            h1 = h2;
+        }
+
+        if (s2 <= 0)
+        {
+            h2 = h1;
+        }
+
+        var deltaHue = h2 - h1;
+        if (deltaHue > 180)
+        {
+            deltaHue -= 360;
+        }
+        else if (deltaHue < -180)
+        {
+            deltaHue += 360;
+        }
+
+        var hue = h1 + deltaHue * fraction;
+        var saturation = s1 + (s2 - s1) * fraction;
+        var value = (v1 + (v2 - v1) * fraction) * _brightness;
+
+        return HsvToRgb(hue, saturation, value);
     }
 
     private RgbColor Scale(RgbColor color) =>
@@ -94,4 +120,76 @@ public sealed class PerFanGradientFlowLightingEffect : ILinkHubLightingEffect
             (byte)Math.Round(color.R * _brightness),
             (byte)Math.Round(color.G * _brightness),
             (byte)Math.Round(color.B * _brightness));
+
+    private static (double H, double S, double V) RgbToHsv(RgbColor color)
+    {
+        double r = color.R / 255d, g = color.G / 255d, b = color.B / 255d;
+        var max = Math.Max(r, Math.Max(g, b));
+        var min = Math.Min(r, Math.Min(g, b));
+        var delta = max - min;
+
+        double hue = 0;
+        if (delta > 0)
+        {
+            if (max == r)
+            {
+                hue = 60 * (((g - b) / delta) % 6);
+            }
+            else if (max == g)
+            {
+                hue = 60 * (((b - r) / delta) + 2);
+            }
+            else
+            {
+                hue = 60 * (((r - g) / delta) + 4);
+            }
+
+            if (hue < 0)
+            {
+                hue += 360;
+            }
+        }
+
+        var saturation = max <= 0 ? 0 : delta / max;
+        return (hue, saturation, max);
+    }
+
+    private static RgbColor HsvToRgb(double hue, double saturation, double value)
+    {
+        hue -= 360d * Math.Floor(hue / 360d); // wrap into [0,360)
+        var c = value * saturation;
+        var x = c * (1 - Math.Abs(((hue / 60d) % 2) - 1));
+        var m = value - c;
+
+        double r, g, b;
+        if (hue < 60)
+        {
+            r = c; g = x; b = 0;
+        }
+        else if (hue < 120)
+        {
+            r = x; g = c; b = 0;
+        }
+        else if (hue < 180)
+        {
+            r = 0; g = c; b = x;
+        }
+        else if (hue < 240)
+        {
+            r = 0; g = x; b = c;
+        }
+        else if (hue < 300)
+        {
+            r = x; g = 0; b = c;
+        }
+        else
+        {
+            r = c; g = 0; b = x;
+        }
+
+        return new RgbColor(
+            (byte)Utils.Clamp((int)Math.Round((r + m) * 255), 0, 255),
+            (byte)Utils.Clamp((int)Math.Round((g + m) * 255), 0, 255),
+            (byte)Utils.Clamp((int)Math.Round((b + m) * 255), 0, 255));
+    }
 }

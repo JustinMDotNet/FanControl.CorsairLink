@@ -112,6 +112,43 @@ public class ICueLinkLightingTests
     }
 
     [Fact]
+    public void PerFanFlow_TransitionsRotateThroughHue()
+    {
+        // cyan -> magenta should rotate through blue (hue 240), not fade through a
+        // desaturated RGB midpoint like (128,128,255)
+        var effect = new PerFanGradientFlowLightingEffect(
+            new[] { new RgbColor(0, 255, 255), new RgbColor(255, 0, 255) },
+            new[] { 4 },
+            TimeSpan.FromSeconds(4),
+            100);
+        var buffer = new RgbColor[4];
+
+        effect.Render(TimeSpan.Zero, buffer);
+
+        // LED 1 sits halfway between cyan and magenta => pure blue via hue rotation
+        Assert.Equal(new byte[] { 0, 0, 255 }, new[] { buffer[1].R, buffer[1].G, buffer[1].B });
+    }
+
+    [Fact]
+    public void PerFanFlow_ReturnsExactPaletteStops()
+    {
+        // the transition rotates hue, but the palette colors themselves must be exact
+        var effect = new PerFanGradientFlowLightingEffect(
+            new[] { new RgbColor(255, 255, 255), new RgbColor(0, 255, 255), new RgbColor(255, 0, 255), new RgbColor(255, 255, 0) },
+            new[] { 4 },
+            TimeSpan.FromSeconds(4),
+            100);
+        var buffer = new RgbColor[4];
+
+        effect.Render(TimeSpan.Zero, buffer);
+
+        Assert.Equal(new byte[] { 255, 255, 255 }, new[] { buffer[0].R, buffer[0].G, buffer[0].B });
+        Assert.Equal(new byte[] { 0, 255, 255 }, new[] { buffer[1].R, buffer[1].G, buffer[1].B });
+        Assert.Equal(new byte[] { 255, 0, 255 }, new[] { buffer[2].R, buffer[2].G, buffer[2].B });
+        Assert.Equal(new byte[] { 255, 255, 0 }, new[] { buffer[3].R, buffer[3].G, buffer[3].B });
+    }
+
+    [Fact]
     public void PerFanFlow_ThrowsWhenNoColors()
     {
         Assert.Throws<ArgumentException>(() =>
