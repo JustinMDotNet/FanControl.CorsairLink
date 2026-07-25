@@ -162,12 +162,12 @@ Don't see your device listed? Open an [issue](https://github.com/EvanMulawski/Fa
 > All versions of this plugin prior to v1.7.0 require the .NET Framework build of Fan Control. Install Fan Control using the `FanControl_*_net_4_8.zip` release files or the `FanControl_*_net_4_8_Installer.exe` installer only.
 
 > [!NOTE]
-> Support for the .NET 8 build of Fan Control was added in v1.7.0-beta.1. As of this version, plugin builds are located within their respective directories. In step 4 below, the `FanControl.CorsairLink.dll` file will be located within the `net48` or `net8.0` directory. Choose the build that matches your Fan Control installation.
+> Support for the .NET build of Fan Control was added in v1.7.0-beta.1. As of this version, plugin builds are located within their respective directories. In step 4 below, the `FanControl.CorsairLink.dll` file will be located within the `net48` or `net10.0` directory. Choose the build that matches your Fan Control installation.
 
 1. Download a [release](https://github.com/EvanMulawski/FanControl.CorsairLink/releases).
 2. Unblock the downloaded ZIP file. (Right-click, Properties, check Unblock, OK)
 3. Exit Fan Control.
-4. Copy `FanControl.CorsairLink.dll` from the ZIP file to Fan Control's `Plugins` directory. Since v1.7.0-beta.1, the `FanControl.CorsairLink.dll` file will be located within the `net48` or `net8.0` directory. Choose the build that matches your Fan Control installation. If the `Plugins` directory does not exist where the Fan Control program is located, create it.
+4. Copy `FanControl.CorsairLink.dll` from the ZIP file to Fan Control's `Plugins` directory. Since v1.7.0-beta.1, the `FanControl.CorsairLink.dll` file will be located within the `net48` or `net10.0` directory. Choose the build that matches your Fan Control installation. If the `Plugins` directory does not exist where the Fan Control program is located, create it.
 5. Start Fan Control.
 
 ### SiUsbXpress Driver
