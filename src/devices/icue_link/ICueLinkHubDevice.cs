@@ -53,7 +53,7 @@ public sealed class ICueLinkHubDevice : DeviceBase
     private const int PACKET_SIZE = 512;
     private const int PACKET_SIZE_OUT = PACKET_SIZE + 1;
     private const int MAX_COLOR_CHUNK_SIZE = 508;
-    private const int LIGHTING_FRAME_INTERVAL_MS = 50;
+    private const int LIGHTING_FRAME_INTERVAL_MS = 20;
 
     private readonly IHidDeviceProxy _device;
     private readonly IDeviceGuardManager _guardManager;
@@ -88,8 +88,8 @@ public sealed class ICueLinkHubDevice : DeviceBase
         _lightingEnabled = options.LightingEnabled;
         _lightingBrightness = Utils.Clamp(options.LightingBrightness ?? 100, 0, 100);
         // iCUE's Watercolor completes one color cycle in ~3.3s (measured from its
-        // USB frame timing: ~100 frames/period at ~30 fps)
-        var cycleSeconds = options.LightingCycleSeconds.HasValue ? options.LightingCycleSeconds.Value : 3.3;
+        // USB frame timing); default a touch slower for a calmer, smoother look
+        var cycleSeconds = options.LightingCycleSeconds.HasValue ? options.LightingCycleSeconds.Value : 4.5;
         _lightingCycleDuration = TimeSpan.FromSeconds(Math.Max(0.5, cycleSeconds));
     }
 
