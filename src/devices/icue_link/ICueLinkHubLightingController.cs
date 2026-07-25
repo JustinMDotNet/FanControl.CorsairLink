@@ -52,6 +52,11 @@ internal sealed class ICueLinkHubLightingController
 
     public void Stop()
     {
+        if (_thread is null)
+        {
+            return; // never started, or already fully stopped
+        }
+
         try
         {
             _cts.Cancel();
@@ -62,15 +67,15 @@ internal sealed class ICueLinkHubLightingController
         }
 
         // The render loop can be blocked on the cross-process device guard, so
-        // give it room to exit. Only dispose the token source once the thread
-        // has actually terminated - disposing while the thread still references
-        // the token risks an ObjectDisposedException on a background thread,
-        // which would crash the host process.
-        var stopped = _thread?.Join(TimeSpan.FromSeconds(5)) ?? true;
-        _thread = null;
-
-        if (stopped)
+        // give it room to exit. Only clear the thread and dispose the token
+        // source once the thread has actually terminated - disposing while the
+        // thread still references the token risks an ObjectDisposedException on
+        // a background thread, which would crash the host process. If the join
+        // times out, keep both so a later Stop() can retry cleanly rather than
+        // disposing a token the still-running thread is using.
+        if (_thread.Join(TimeSpan.FromSeconds(5)))
         {
+            _thread = null;
             _cts.Dispose();
         }
     }
@@ -99,7 +104,14 @@ internal sealed class ICueLinkHubLightingController
 
                 if (consecutiveErrors < MaxLoggedConsecutiveErrors)
                 {
-                    _onError(ex);
+                    try
+                    {
+                        _onError(ex);
+                    }
+                    catch
+                    {
+                        // never let a logging failure terminate the render thread
+                    }
                 }
 
                 consecutiveErrors++;
