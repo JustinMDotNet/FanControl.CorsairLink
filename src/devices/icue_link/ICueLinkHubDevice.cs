@@ -57,10 +57,10 @@ public sealed class ICueLinkHubDevice : DeviceBase
 
     private static readonly IReadOnlyList<RgbColor> DefaultLightingColors = new[]
     {
-        new RgbColor(255, 0, 0),
-        new RgbColor(0, 255, 0),
-        new RgbColor(0, 0, 255),
+        new RgbColor(255, 255, 255),
+        new RgbColor(0, 255, 255),
         new RgbColor(255, 0, 255),
+        new RgbColor(255, 255, 0),
     };
 
     private readonly IHidDeviceProxy _device;
