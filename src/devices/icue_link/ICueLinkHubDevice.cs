@@ -12,9 +12,11 @@ public sealed class ICueLinkHubDevice : DeviceBase
         public static ReadOnlySpan<byte> EnterHardwareMode => new byte[] { 0x01, 0x03, 0x00, 0x01 };
         public static ReadOnlySpan<byte> ReadFirmwareVersion => new byte[] { 0x02, 0x13 };
         public static ReadOnlySpan<byte> OpenEndpoint => new byte[] { 0x0d, HANDLE_ID };
+        public static ReadOnlySpan<byte> OpenColorEndpoint => new byte[] { 0x0d, 0x00 };
         public static ReadOnlySpan<byte> CloseEndpoint => new byte[] { 0x05, 0x01, HANDLE_ID };
         public static ReadOnlySpan<byte> Read => new byte[] { 0x08, HANDLE_ID };
         public static ReadOnlySpan<byte> Write => new byte[] { 0x06, HANDLE_ID };
+        public static ReadOnlySpan<byte> WriteColor => new byte[] { 0x06, 0x00 };
     }
 
     private static class Endpoints
@@ -23,6 +25,8 @@ public sealed class ICueLinkHubDevice : DeviceBase
         public static ReadOnlySpan<byte> GetTemperatures => new byte[] { 0x21 };
         public static ReadOnlySpan<byte> SoftwareSpeedFixedPercent => new byte[] { 0x18 };
         public static ReadOnlySpan<byte> GetSubDevices => new byte[] { 0x36 };
+        public static ReadOnlySpan<byte> GetLeds => new byte[] { 0x20 };
+        public static ReadOnlySpan<byte> SetColor => new byte[] { 0x22 };
     }
 
     private static class DataTypes
@@ -31,6 +35,8 @@ public sealed class ICueLinkHubDevice : DeviceBase
         public static ReadOnlySpan<byte> Temperatures => new byte[] { 0x10, 0x00 };
         public static ReadOnlySpan<byte> SoftwareSpeedFixedPercent => new byte[] { 0x07, 0x00 };
         public static ReadOnlySpan<byte> SubDevices => new byte[] { 0x21, 0x00 };
+        public static ReadOnlySpan<byte> SetColor => new byte[] { 0x12, 0x00 };
+        public static ReadOnlySpan<byte> SubColor => new byte[] { 0x07, 0x00 };
         public static ReadOnlySpan<byte> Continuation => new byte[] { };
     }
 
@@ -47,13 +53,30 @@ public sealed class ICueLinkHubDevice : DeviceBase
     private const int SEND_COMMAND_WAIT_FOR_DATA_TYPE_READ_TIMEOUT_MS = 500;
     private const int PACKET_SIZE = 512;
     private const int PACKET_SIZE_OUT = PACKET_SIZE + 1;
+    private const int MAX_COLOR_CHUNK_SIZE = 508;
+    private const int LIGHTING_FRAME_INTERVAL_MS = 50;
+
+    private static readonly IReadOnlyList<RgbColor> DefaultLightingColors = new[]
+    {
+        new RgbColor(255, 0, 0),
+        new RgbColor(0, 255, 0),
+        new RgbColor(0, 0, 255),
+        new RgbColor(255, 0, 255),
+    };
 
     private readonly IHidDeviceProxy _device;
     private readonly IDeviceGuardManager _guardManager;
     private readonly byte _pumpPowerMinimum;
+    private readonly bool _lightingEnabled;
+    private readonly IReadOnlyList<RgbColor> _lightingColors;
+    private readonly int _lightingBrightness;
+    private readonly TimeSpan _lightingCycleDuration;
     private bool _isChangingDeviceMode;
     private bool _supportsAdditionalSubDevices;
     private bool _needsDeviceModeChange;
+    private bool _needsColorEndpointSetup;
+    private int _totalLedCount;
+    private ICueLinkHubLightingController? _lightingController;
 
     private readonly ChannelTrackingStore _requestedChannelPower = new();
     private readonly Dictionary<int, SpeedSensor> _speedSensors = new();
@@ -71,6 +94,11 @@ public sealed class ICueLinkHubDevice : DeviceBase
         UniqueId = deviceInfo.DevicePath;
 
         _pumpPowerMinimum = (byte)Utils.Clamp(options.MinimumPumpPower ?? ICueLinkHubDeviceOptions.MinimumPumpPowerDefault, PERCENT_MIN, PERCENT_MAX);
+
+        _lightingEnabled = options.LightingEnabled;
+        _lightingColors = options.LightingColors is { Count: > 0 } colors ? colors : DefaultLightingColors;
+        _lightingBrightness = Utils.Clamp(options.LightingBrightness ?? 100, 0, 100);
+        _lightingCycleDuration = TimeSpan.FromSeconds(Math.Max(1, options.LightingCycleSeconds ?? 12));
     }
 
     public override string UniqueId { get; }
@@ -116,6 +144,7 @@ public sealed class ICueLinkHubDevice : DeviceBase
             _ = SendCommand(Commands.EnterSoftwareMode);
             _isChangingDeviceMode = false;
             _needsDeviceModeChange = false;
+            _needsColorEndpointSetup = true;
         }
 
         return true;
@@ -141,10 +170,47 @@ public sealed class ICueLinkHubDevice : DeviceBase
 
         TryChangeDeviceMode();
         RefreshImpl(initialize: true);
+
+        if (_lightingEnabled)
+        {
+            InitializeLighting();
+        }
+    }
+
+    private void InitializeLighting()
+    {
+        try
+        {
+            _totalLedCount = ReadTotalLedCount();
+            LogInfo($"Lighting: {_totalLedCount} LED(s) detected");
+
+            if (_totalLedCount <= 0)
+            {
+                LogWarning("Lighting: no LEDs detected; software lighting will not be enabled.");
+                return;
+            }
+
+            _needsColorEndpointSetup = true;
+
+            var effect = new ColorCycleLightingEffect(_lightingColors, _lightingCycleDuration, _lightingBrightness);
+            _lightingController = new ICueLinkHubLightingController(
+                effect,
+                TimeSpan.FromMilliseconds(LIGHTING_FRAME_INTERVAL_MS),
+                WriteLightingFrame,
+                LogError);
+            _lightingController.Start();
+        }
+        catch (Exception ex)
+        {
+            LogWarning("Lighting: initialization failed; software lighting will not be enabled.");
+            LogError(ex);
+        }
     }
 
     public override void Disconnect()
     {
+        _lightingController?.Stop();
+        _lightingController = null;
         _device.Close();
     }
 
@@ -465,6 +531,73 @@ public sealed class ICueLinkHubDevice : DeviceBase
             SendCommand(Commands.Write, writeBuf);
             SendCommand(Commands.CloseEndpoint, endpoint);
         }
+    }
+
+    private int ReadTotalLedCount()
+    {
+        byte[] response;
+
+        using (_guardManager.AwaitExclusiveAccess())
+        {
+            SendCommand(Commands.CloseEndpoint, Endpoints.GetLeds);
+            SendCommand(Commands.OpenEndpoint, Endpoints.GetLeds);
+            response = SendCommand(Commands.Read);
+            SendCommand(Commands.CloseEndpoint, Endpoints.GetLeds);
+        }
+
+        return LinkHubDataReader.GetTotalLedCount(response);
+    }
+
+    private void WriteLightingFrame(RgbColor color)
+    {
+        if (_totalLedCount <= 0)
+        {
+            return;
+        }
+
+        var rgbData = LinkHubDataWriter.CreateColorData(_totalLedCount, color);
+        var writeBuf = LinkHubDataWriter.CreateWriteData(DataTypes.SetColor, rgbData);
+
+        using (_guardManager.AwaitExclusiveAccess())
+        {
+            if (_needsColorEndpointSetup)
+            {
+                SetupColorEndpoint();
+                _needsColorEndpointSetup = false;
+            }
+
+            var offset = 0;
+            var isFirstChunk = true;
+
+            while (offset < writeBuf.Length)
+            {
+                var length = Math.Min(MAX_COLOR_CHUNK_SIZE, writeBuf.Length - offset);
+                var chunk = writeBuf.AsSpan(offset, length);
+
+                SendColorPacket(isFirstChunk ? Commands.WriteColor : DataTypes.SubColor, chunk);
+
+                offset += length;
+                isFirstChunk = false;
+            }
+        }
+    }
+
+    private void SetupColorEndpoint()
+    {
+        SendColorPacket(Commands.CloseEndpoint, Endpoints.SetColor);
+        SendColorPacket(Commands.OpenColorEndpoint, Endpoints.SetColor);
+    }
+
+    private void SendColorPacket(ReadOnlySpan<byte> command, ReadOnlySpan<byte> data)
+    {
+        // color transfers do not return a meaningful status byte, so unlike SendCommand
+        // they are written and drained without error-code validation
+
+        var writeBuf = LinkHubDataWriter.CreateCommandPacket(PACKET_SIZE_OUT, command, data);
+        var readBuf = new byte[PACKET_SIZE];
+
+        Write(writeBuf);
+        Read(readBuf);
     }
 
     private void Write(byte[] buffer)

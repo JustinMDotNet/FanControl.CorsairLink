@@ -29,6 +29,10 @@ public static class HidDeviceManager
         _ = RgbColor.TryParse(directLightingDefaultColorValue, out var directLightingDefaultColor);
         var directLightingDefaultBrightnessValue = Utils.GetEnvironmentInt32("FANCONTROL_CORSAIRLINK_DIRECT_LIGHTING_DEFAULT_BRIGHTNESS");
         var directLightingDisableAfterReset = Utils.GetEnvironmentFlag("FANCONTROL_CORSAIRLINK_DIRECT_LIGHTING_DISABLE_AFTER_RESET");
+        var iCueLinkLightingEnabled = Utils.GetEnvironmentFlag("FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING");
+        var iCueLinkLightingColors = ParseColorList(Utils.GetEnvironmentString("FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING_COLORS"));
+        var iCueLinkLightingBrightness = Utils.GetEnvironmentInt32("FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING_BRIGHTNESS");
+        var iCueLinkLightingCycleSeconds = Utils.GetEnvironmentInt32("FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING_CYCLE_SECONDS");
 
         var collection = new List<IDevice>();
 
@@ -39,6 +43,10 @@ public static class HidDeviceManager
             .Select(x => new ICueLinkHubDevice(new HidSharpDeviceProxy(x), deviceGuardManager, new ICueLinkHubDeviceOptions
             {
                 MinimumPumpPower = globalMinimumPumpPowerValue,
+                LightingEnabled = iCueLinkLightingEnabled,
+                LightingColors = iCueLinkLightingColors,
+                LightingBrightness = iCueLinkLightingBrightness,
+                LightingCycleSeconds = iCueLinkLightingCycleSeconds,
             }, logger)));
 
         collection.AddRange(supportedDevices.InDeviceDriverGroup(HardwareIds.DeviceDriverGroups.CommanderCore)
@@ -95,6 +103,25 @@ public static class HidDeviceManager
             .Select(x => new Xc7LcdWaterBlockDevice(new HidSharpDeviceProxy(x), deviceGuardManager, logger)));
 
         return collection;
+    }
+
+    private static IReadOnlyList<RgbColor>? ParseColorList(string? value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        var colors = new List<RgbColor>();
+        foreach (var part in value!.Split('|'))
+        {
+            if (RgbColor.TryParse(part.Trim(), out var color) && color is not null)
+            {
+                colors.Add(color);
+            }
+        }
+
+        return colors.Count > 0 ? colors : null;
     }
 
     private static IEnumerable<HidDevice> InDeviceDriverGroup(this IEnumerable<HidDevice> devices, IEnumerable<int> deviceDriverGroup)

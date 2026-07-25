@@ -204,12 +204,17 @@ This plugin reads the following Windows environment variables:
 | `FANCONTROL_CORSAIRLINK_DIRECT_LIGHTING_DEFAULT_RGB` <sup>1</sup>         | Sets the LED color on supported models.                        | RGB color in `R,G,B` format, e.g. `0,255,0` |
 | `FANCONTROL_CORSAIRLINK_ERROR_NOTIFICATIONS_DISABLED`                     | Disables critical error notifications.                         | `1` = disabled, `0` = enabled               |
 | `FANCONTROL_CORSAIRLINK_HYDRO_ASETEK_PRO_SAFETY_PROFILE_OVERRIDE_ENABLED` | Overrides the pump safety profile on Hydro Asetek Pro devices. | `1` = override, `0` = do not override       |
+| `FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING` <sup>4</sup>                   | Enables software-driven color-cycle lighting on the iCUE LINK Hub so LEDs stay lit after the hub is switched to software-controlled mode. | `1` = enabled, `0` = disabled |
+| `FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING_COLORS` <sup>4</sup>            | The palette the effect cycles through. Defaults to a 4-color cycle. | pipe-separated `R,G,B` colors, e.g. `255,0,0\|0,255,0\|0,0,255` |
+| `FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING_BRIGHTNESS` <sup>4</sup>        | Sets the LED brightness for the effect. Defaults to `100`.     | percent, e.g. `50`                          |
+| `FANCONTROL_CORSAIRLINK_ICUELINK_LIGHTING_CYCLE_SECONDS` <sup>4</sup>     | Seconds for one full loop through the palette. Defaults to `12`. | seconds, e.g. `20`                        |
 | `FANCONTROL_CORSAIRLINK_MIN_PUMP_DUTY` <sup>2</sup>                       | Sets the minimum pump power on supported models.               | percent, e.g. `50`                          |
 | `FANCONTROL_CORSAIRLINK_PSU_ZERO_RPM_DUTY` <sup>3</sup>                   | Sets the zero-RPM duty threshold for the PSU fan.              | percent, e.g. `20`                          |
 
 1. Supported models: Hydro Platinum (v1.6.0+)
 2. Supported models: iCUE LINK, Commander CORE (v1.6.0+)
 3. Requires v1.8.0+
+4. Supported models: iCUE LINK Hub. This recreates an animated effect in software (the hardware effect cannot persist once the hub is under software control); it only runs while Fan Control is running and cannot run alongside iCUE or other software that holds the hub's lighting.
 
 > [!TIP]
 > To set these values, start Run or Command Prompt and run `rundll32 sysdm.cpl,EditEnvironmentVariables`. Alternatively, use the `setx` command.

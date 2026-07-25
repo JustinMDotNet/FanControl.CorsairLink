@@ -118,6 +118,43 @@ public static class LinkHubDataReader
         return sensors;
     }
 
+    public static int GetTotalLedCount(ReadOnlySpan<byte> packet)
+    {
+        // packet[6] = channel count
+        // packet[7:] = per-channel records, 4 bytes each, starting at channel 1 (record offset ch*4)
+        //   [0,1] = connected flag (0x0002 when connected)
+        //   [2,3] = LED count
+
+        if (packet.Length < 7)
+        {
+            return 0;
+        }
+
+        int channels = packet[6];
+        var data = packet.Slice(7);
+        var total = 0;
+
+        for (var channel = 1; channel <= channels; channel++)
+        {
+            var offset = channel * 4;
+            if (offset + 4 > data.Length)
+            {
+                break;
+            }
+
+            var connected = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset, 2)) == 2;
+            if (!connected)
+            {
+                continue;
+            }
+
+            int ledCount = BinaryPrimitives.ReadUInt16LittleEndian(data.Slice(offset + 2, 2));
+            total += Math.Min(ledCount, 50);
+        }
+
+        return total;
+    }
+
     public static IReadOnlyCollection<LinkHubTemperatureSensor> GetTemperatureSensors(ReadOnlySpan<byte> packet)
     {
         var count = packet[6];

@@ -30,6 +30,24 @@ public static class LinkHubDataWriter
         return data;
     }
 
+    public static byte[] CreateColorData(int ledCount, RgbColor color)
+    {
+        // flat buffer of RGB triplets, one per LED, in channel order;
+        // the hub distributes them to connected devices sequentially
+
+        var data = new byte[ledCount * 3];
+
+        for (var i = 0; i < ledCount; i++)
+        {
+            var offset = i * 3;
+            data[offset] = color.R;
+            data[offset + 1] = color.G;
+            data[offset + 2] = color.B;
+        }
+
+        return data;
+    }
+
     public static byte[] CreateWriteData(ReadOnlySpan<byte> dataType, ReadOnlySpan<byte> data)
     {
         const int HEADER_LENGTH = 4;
