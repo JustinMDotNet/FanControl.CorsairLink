@@ -31,7 +31,7 @@ public class ICueLinkLightingTests
     }
 
     [Fact]
-    public void PerFanCycle_EachFanShowsOneSolidColor()
+    public void PerFanFlow_EachFanShowsFullPaletteGradient()
     {
         var colors = new[]
         {
@@ -40,30 +40,8 @@ public class ICueLinkLightingTests
             new RgbColor(255, 0, 255),
             new RgbColor(255, 255, 0),
         };
-        // 2 fans, 2 LEDs each; at t=0 fan0 phase 0 (white), fan1 phase 0.5 (magenta)
-        var effect = new PerFanColorCycleLightingEffect(colors, new[] { 2, 2 }, TimeSpan.FromSeconds(4), 100);
-        var buffer = new RgbColor[4];
-
-        effect.Render(TimeSpan.Zero, buffer);
-
-        Assert.Equal(new byte[] { 255, 255, 255 }, new[] { buffer[0].R, buffer[0].G, buffer[0].B });
-        Assert.Equal(new byte[] { 255, 255, 255 }, new[] { buffer[1].R, buffer[1].G, buffer[1].B });
-        Assert.Equal(new byte[] { 255, 0, 255 }, new[] { buffer[2].R, buffer[2].G, buffer[2].B });
-        Assert.Equal(new byte[] { 255, 0, 255 }, new[] { buffer[3].R, buffer[3].G, buffer[3].B });
-    }
-
-    [Fact]
-    public void PerFanCycle_StaggersDevicesAcrossPalette()
-    {
-        var colors = new[]
-        {
-            new RgbColor(255, 255, 255),
-            new RgbColor(0, 255, 255),
-            new RgbColor(255, 0, 255),
-            new RgbColor(255, 255, 0),
-        };
-        // 4 fans, 1 LED each => offsets 0, .25, .5, .75 land on the 4 stops
-        var effect = new PerFanColorCycleLightingEffect(colors, new[] { 1, 1, 1, 1 }, TimeSpan.FromSeconds(4), 100);
+        // 1 fan, 4 LEDs => the 4 palette stops land one-per-LED across the fan
+        var effect = new PerFanGradientFlowLightingEffect(colors, new[] { 4 }, TimeSpan.FromSeconds(4), 100);
         var buffer = new RgbColor[4];
 
         effect.Render(TimeSpan.Zero, buffer);
@@ -75,7 +53,7 @@ public class ICueLinkLightingTests
     }
 
     [Fact]
-    public void PerFanCycle_DeviceCyclesOverTime()
+    public void PerFanFlow_GradientRepeatsPerFan()
     {
         var colors = new[]
         {
@@ -84,18 +62,43 @@ public class ICueLinkLightingTests
             new RgbColor(255, 0, 255),
             new RgbColor(255, 255, 0),
         };
-        var effect = new PerFanColorCycleLightingEffect(colors, new[] { 1 }, TimeSpan.FromSeconds(4), 100);
-        var buffer = new RgbColor[1];
+        // 2 fans of 4 LEDs => each fan shows the same full gradient independently
+        var effect = new PerFanGradientFlowLightingEffect(colors, new[] { 4, 4 }, TimeSpan.FromSeconds(4), 100);
+        var buffer = new RgbColor[8];
 
-        effect.Render(TimeSpan.FromSeconds(1), buffer); // phase 0.25 => second stop (cyan)
+        effect.Render(TimeSpan.Zero, buffer);
+
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.Equal(buffer[i].R, buffer[i + 4].R);
+            Assert.Equal(buffer[i].G, buffer[i + 4].G);
+            Assert.Equal(buffer[i].B, buffer[i + 4].B);
+        }
+    }
+
+    [Fact]
+    public void PerFanFlow_ScrollsOverTime()
+    {
+        var colors = new[]
+        {
+            new RgbColor(255, 255, 255),
+            new RgbColor(0, 255, 255),
+            new RgbColor(255, 0, 255),
+            new RgbColor(255, 255, 0),
+        };
+        var effect = new PerFanGradientFlowLightingEffect(colors, new[] { 4 }, TimeSpan.FromSeconds(4), 100);
+        var buffer = new RgbColor[4];
+
+        // phase 0.25 => LED 0 (position 0 + 0.25) advances one stop to cyan
+        effect.Render(TimeSpan.FromSeconds(1), buffer);
 
         Assert.Equal(new byte[] { 0, 255, 255 }, new[] { buffer[0].R, buffer[0].G, buffer[0].B });
     }
 
     [Fact]
-    public void PerFanCycle_SingleColorAppliesBrightness()
+    public void PerFanFlow_SingleColorAppliesBrightness()
     {
-        var effect = new PerFanColorCycleLightingEffect(new[] { new RgbColor(200, 100, 50) }, new[] { 3 }, TimeSpan.FromSeconds(4), 50);
+        var effect = new PerFanGradientFlowLightingEffect(new[] { new RgbColor(200, 100, 50) }, new[] { 3 }, TimeSpan.FromSeconds(4), 50);
         var buffer = new RgbColor[3];
 
         effect.Render(TimeSpan.FromSeconds(1.3), buffer);
@@ -109,9 +112,9 @@ public class ICueLinkLightingTests
     }
 
     [Fact]
-    public void PerFanCycle_ThrowsWhenNoColors()
+    public void PerFanFlow_ThrowsWhenNoColors()
     {
         Assert.Throws<ArgumentException>(() =>
-            new PerFanColorCycleLightingEffect(Array.Empty<RgbColor>(), new[] { 1 }, TimeSpan.FromSeconds(4), 100));
+            new PerFanGradientFlowLightingEffect(Array.Empty<RgbColor>(), new[] { 1 }, TimeSpan.FromSeconds(4), 100));
     }
 }

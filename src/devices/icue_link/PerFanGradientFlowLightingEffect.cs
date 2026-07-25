@@ -2,19 +2,19 @@ namespace CorsairLink.Devices.ICueLink;
 
 /// <summary>
 /// Recreates an animated lighting effect in software where each connected RGB
-/// device (fan/cooler) shows a single solid color that cycles through the palette.
-/// Devices are staggered around the palette loop so they cycle independently.
+/// device (fan/cooler) shows the full palette as a gradient across its own LEDs,
+/// scrolling over time so the colors shift/flow ("rain") within every device.
 /// Used to keep the iCUE LINK hub illuminated after the plugin switches it to
 /// software-controlled mode.
 /// </summary>
-public sealed class PerFanColorCycleLightingEffect : ILinkHubLightingEffect
+public sealed class PerFanGradientFlowLightingEffect : ILinkHubLightingEffect
 {
     private readonly IReadOnlyList<RgbColor> _colors;
     private readonly IReadOnlyList<int> _fanLedCounts;
     private readonly double _cycleSeconds;
     private readonly double _brightness;
 
-    public PerFanColorCycleLightingEffect(
+    public PerFanGradientFlowLightingEffect(
         IReadOnlyList<RgbColor> colors,
         IReadOnlyList<int> fanLedCounts,
         TimeSpan cycleDuration,
@@ -38,32 +38,28 @@ public sealed class PerFanColorCycleLightingEffect : ILinkHubLightingEffect
             return;
         }
 
-        var fanCount = _fanLedCounts.Count;
-        var basePhase = elapsed.TotalSeconds / _cycleSeconds;
+        var phase = elapsed.TotalSeconds / _cycleSeconds;
         var index = 0;
 
-        for (var f = 0; f < fanCount; f++)
+        foreach (var leds in _fanLedCounts)
         {
-            // stagger each device around the palette loop so they cycle independently
-            var offset = (double)f / fanCount;
-            var color = ColorAt(basePhase + offset);
-
-            var leds = _fanLedCounts[f];
             for (var j = 0; j < leds && index < buffer.Length; j++)
             {
-                buffer[index++] = color;
+                // spread the whole palette across this device's LEDs and scroll it
+                // over time so the colors flow within each device independently
+                var position = leds > 1 ? (double)j / leds + phase : phase;
+                buffer[index++] = ColorAt(position);
             }
         }
 
         // fill any remainder (e.g. a count mismatch) so no LED is left uninitialized
-        var fallback = ColorAt(basePhase);
         while (index < buffer.Length)
         {
-            buffer[index++] = fallback;
+            buffer[index++] = ColorAt(phase);
         }
     }
 
-    private RgbColor ColorAt(double phase)
+    private RgbColor ColorAt(double position)
     {
         var count = _colors.Count;
 
@@ -72,7 +68,7 @@ public sealed class PerFanColorCycleLightingEffect : ILinkHubLightingEffect
             return Scale(_colors[0]);
         }
 
-        var position = phase - Math.Floor(phase); // wrap into [0,1)
+        position -= Math.Floor(position); // wrap into [0,1)
         var scaled = position * count;
         var index = (int)Math.Floor(scaled) % count;
         var nextIndex = (index + 1) % count;

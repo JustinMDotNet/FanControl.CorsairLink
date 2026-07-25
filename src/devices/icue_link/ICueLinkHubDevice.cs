@@ -192,7 +192,7 @@ public sealed class ICueLinkHubDevice : DeviceBase
 
             _needsColorEndpointSetup = true;
 
-            var effect = new PerFanColorCycleLightingEffect(_lightingColors, fanLedCounts, _lightingCycleDuration, _lightingBrightness);
+            var effect = new PerFanGradientFlowLightingEffect(_lightingColors, fanLedCounts, _lightingCycleDuration, _lightingBrightness);
             _lightingController = new ICueLinkHubLightingController(
                 effect,
                 _totalLedCount,
