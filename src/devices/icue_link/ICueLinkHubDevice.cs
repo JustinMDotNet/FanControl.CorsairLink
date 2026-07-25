@@ -55,19 +55,10 @@ public sealed class ICueLinkHubDevice : DeviceBase
     private const int MAX_COLOR_CHUNK_SIZE = 508;
     private const int LIGHTING_FRAME_INTERVAL_MS = 50;
 
-    private static readonly IReadOnlyList<RgbColor> DefaultLightingColors = new[]
-    {
-        new RgbColor(255, 255, 255),
-        new RgbColor(0, 255, 255),
-        new RgbColor(255, 0, 255),
-        new RgbColor(255, 255, 0),
-    };
-
     private readonly IHidDeviceProxy _device;
     private readonly IDeviceGuardManager _guardManager;
     private readonly byte _pumpPowerMinimum;
     private readonly bool _lightingEnabled;
-    private readonly IReadOnlyList<RgbColor> _lightingColors;
     private readonly int _lightingBrightness;
     private readonly TimeSpan _lightingCycleDuration;
     private bool _isChangingDeviceMode;
@@ -95,9 +86,8 @@ public sealed class ICueLinkHubDevice : DeviceBase
         _pumpPowerMinimum = (byte)Utils.Clamp(options.MinimumPumpPower ?? ICueLinkHubDeviceOptions.MinimumPumpPowerDefault, PERCENT_MIN, PERCENT_MAX);
 
         _lightingEnabled = options.LightingEnabled;
-        _lightingColors = options.LightingColors is { Count: > 0 } colors ? colors : DefaultLightingColors;
         _lightingBrightness = Utils.Clamp(options.LightingBrightness ?? 100, 0, 100);
-        _lightingCycleDuration = TimeSpan.FromSeconds(Math.Max(1, options.LightingCycleSeconds ?? 12));
+        _lightingCycleDuration = TimeSpan.FromSeconds(Math.Max(1, options.LightingCycleSeconds ?? 4));
     }
 
     public override string UniqueId { get; }
@@ -192,7 +182,7 @@ public sealed class ICueLinkHubDevice : DeviceBase
 
             _needsColorEndpointSetup = true;
 
-            var effect = new PerFanGradientFlowLightingEffect(_lightingColors, fanLedCounts, _lightingCycleDuration, _lightingBrightness);
+            var effect = new WatercolorLightingEffect(fanLedCounts, _lightingCycleDuration, _lightingBrightness);
             _lightingController = new ICueLinkHubLightingController(
                 effect,
                 _totalLedCount,
