@@ -213,7 +213,7 @@ This plugin reads the following Windows environment variables:
 1. Supported models: Hydro Platinum (v1.6.0+)
 2. Supported models: iCUE LINK, Commander CORE (v1.6.0+)
 3. Requires v1.8.0+
-4. Supported models: iCUE LINK Hub. This recreates an animated effect in software (the hardware effect cannot persist once the hub is under software control); it only runs while Fan Control is running and cannot run alongside iCUE or other software that holds the hub's lighting.
+4. Supported models: iCUE LINK Hub. This recreates an animated effect in software (the hardware effect cannot persist once the hub is under software control); it only runs while Fan Control is running and cannot run alongside iCUE or other software that holds the hub's lighting. LED counts are taken from a per-model catalogue, so devices with a dynamic/variable LED count (e.g. a COMMANDER DUO with attached ARGB strips) are not lit and may be best left with lighting disabled.
 
 > [!TIP]
 > To set these values, start Run or Command Prompt and run `rundll32 sysdm.cpl,EditEnvironmentVariables`. Alternatively, use the `setx` command.

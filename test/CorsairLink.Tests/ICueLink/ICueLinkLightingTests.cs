@@ -117,4 +117,59 @@ public class ICueLinkLightingTests
             Assert.True(color.R + color.G + color.B > 0);
         }
     }
+
+    [Fact]
+    public void Controller_StopWithoutStart_DoesNotThrow()
+    {
+        var controller = CreateController(_ => { }, _ => { });
+
+        controller.Stop();
+        controller.Stop(); // idempotent
+    }
+
+    [Fact]
+    public void Controller_StartThenStop_RendersThenTerminates()
+    {
+        var frames = 0;
+        var controller = CreateController(_ => Interlocked.Increment(ref frames), _ => { });
+
+        controller.Start();
+        SpinWait.SpinUntil(() => Volatile.Read(ref frames) > 0, TimeSpan.FromSeconds(2));
+        controller.Stop();
+
+        var rendered = Volatile.Read(ref frames);
+        Assert.True(rendered > 0, "expected at least one frame to render");
+
+        // a second stop after disposal must not throw
+        controller.Stop();
+    }
+
+    [Fact]
+    public void Controller_RenderFailures_AreLoggedAtMostThreeTimes()
+    {
+        var errors = 0;
+        var controller = CreateController(
+            _ => throw new InvalidOperationException("boom"),
+            _ => Interlocked.Increment(ref errors));
+
+        controller.Start();
+        Thread.Sleep(300);
+        controller.Stop();
+
+        // logging is capped even though rendering keeps failing (and backs off)
+        Assert.InRange(Volatile.Read(ref errors), 1, 3);
+    }
+
+    private static ICueLinkHubLightingController CreateController(
+        Action<RgbColor[]> renderFrame,
+        Action<Exception> onError)
+    {
+        var effect = new WatercolorLightingEffect(new[] { 4 }, TimeSpan.FromSeconds(4), 100);
+        return new ICueLinkHubLightingController(
+            effect,
+            ledCount: 4,
+            frameInterval: TimeSpan.FromMilliseconds(5),
+            renderFrame,
+            onError);
+    }
 }

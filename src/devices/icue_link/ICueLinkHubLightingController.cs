@@ -10,6 +10,7 @@ namespace CorsairLink.Devices.ICueLink;
 internal sealed class ICueLinkHubLightingController
 {
     private const int MaxLoggedConsecutiveErrors = 3;
+    private const double MaxBackoffMilliseconds = 1000;
 
     private readonly ILinkHubLightingEffect _effect;
     private readonly int _ledCount;
@@ -57,12 +58,21 @@ internal sealed class ICueLinkHubLightingController
         }
         catch (ObjectDisposedException)
         {
-            // already stopped
+            return; // already stopped
         }
 
-        _thread?.Join(TimeSpan.FromSeconds(2));
+        // The render loop can be blocked on the cross-process device guard, so
+        // give it room to exit. Only dispose the token source once the thread
+        // has actually terminated - disposing while the thread still references
+        // the token risks an ObjectDisposedException on a background thread,
+        // which would crash the host process.
+        var stopped = _thread?.Join(TimeSpan.FromSeconds(5)) ?? true;
         _thread = null;
-        _cts.Dispose();
+
+        if (stopped)
+        {
+            _cts.Dispose();
+        }
     }
 
     private void Run()
@@ -87,13 +97,35 @@ internal sealed class ICueLinkHubLightingController
                     break;
                 }
 
-                if (consecutiveErrors++ < MaxLoggedConsecutiveErrors)
+                if (consecutiveErrors < MaxLoggedConsecutiveErrors)
                 {
                     _onError(ex);
                 }
+
+                consecutiveErrors++;
             }
 
-            token.WaitHandle.WaitOne(_frameInterval);
+            // Back off while frames are failing so repeated device I/O does not
+            // keep contending for the shared device guard and delay fan/pump/PSU
+            // updates; the normal frame rate resumes once a frame succeeds.
+            var interval = consecutiveErrors > 0 ? GetBackoffInterval(consecutiveErrors) : _frameInterval;
+
+            try
+            {
+                token.WaitHandle.WaitOne(interval);
+            }
+            catch (ObjectDisposedException)
+            {
+                break;
+            }
         }
+    }
+
+    private TimeSpan GetBackoffInterval(int consecutiveErrors)
+    {
+        // exponential backoff from the frame interval, capped at 1 second
+        var multiplier = 1 << Math.Min(consecutiveErrors, 6);
+        var backoffMs = Math.Min(_frameInterval.TotalMilliseconds * multiplier, MaxBackoffMilliseconds);
+        return TimeSpan.FromMilliseconds(backoffMs);
     }
 }
