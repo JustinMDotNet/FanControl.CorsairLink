@@ -25,7 +25,6 @@ public sealed class ICueLinkHubDevice : DeviceBase
         public static ReadOnlySpan<byte> GetTemperatures => new byte[] { 0x21 };
         public static ReadOnlySpan<byte> SoftwareSpeedFixedPercent => new byte[] { 0x18 };
         public static ReadOnlySpan<byte> GetSubDevices => new byte[] { 0x36 };
-        public static ReadOnlySpan<byte> GetLeds => new byte[] { 0x20 };
         public static ReadOnlySpan<byte> SetColor => new byte[] { 0x22 };
     }
 
@@ -181,7 +180,7 @@ public sealed class ICueLinkHubDevice : DeviceBase
     {
         try
         {
-            _totalLedCount = ReadTotalLedCount();
+            _totalLedCount = CalculateTotalLedCount();
             LogInfo($"Lighting: {_totalLedCount} LED(s) detected");
 
             if (_totalLedCount <= 0)
@@ -533,19 +532,15 @@ public sealed class ICueLinkHubDevice : DeviceBase
         }
     }
 
-    private int ReadTotalLedCount()
+    private int CalculateTotalLedCount()
     {
-        byte[] response;
-
-        using (_guardManager.AwaitExclusiveAccess())
+        var total = 0;
+        foreach (var (_, knownDevice) in _channels.Values)
         {
-            SendCommand(Commands.CloseEndpoint, Endpoints.GetLeds);
-            SendCommand(Commands.OpenEndpoint, Endpoints.GetLeds);
-            response = SendCommand(Commands.Read);
-            SendCommand(Commands.CloseEndpoint, Endpoints.GetLeds);
+            total += knownDevice.LedChannels;
         }
 
-        return LinkHubDataReader.GetTotalLedCount(response);
+        return total;
     }
 
     private void WriteLightingFrame(RgbColor color)

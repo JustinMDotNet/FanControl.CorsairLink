@@ -2,18 +2,20 @@
 
 public sealed class KnownLinkDevice
 {
-    public KnownLinkDevice(LinkDeviceModel model, byte variant, string name, LinkDeviceFlags flags = LinkDeviceFlags.None)
+    public KnownLinkDevice(LinkDeviceModel model, byte variant, string name, LinkDeviceFlags flags = LinkDeviceFlags.None, int ledChannels = 0)
     {
         Model = model;
         Variant = variant;
         Name = name;
         Flags = flags;
+        LedChannels = ledChannels;
     }
 
     public LinkDeviceModel Model { get; }
     public byte Variant { get; }
     public string Name { get; }
     public LinkDeviceFlags Flags { get; }
+    public int LedChannels { get; }
 
     public bool IsPump =>
         Model == LinkDeviceModel.LiquidCoolerHSeries ||

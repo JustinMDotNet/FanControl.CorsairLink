@@ -5,52 +5,15 @@ namespace CorsairLink.Tests.ICueLink;
 
 public class ICueLinkLightingTests
 {
-    private static byte[] BuildLedCountPacket(params (bool Connected, int Leds)[] channels)
-    {
-        // packet[6] = channel count; packet[7:] = data; channel ch record starts at data[ch*4]
-        var data = new List<byte>(new byte[4]); // data[0..3] unused
-        foreach (var (connected, leds) in channels)
-        {
-            data.Add((byte)(connected ? 0x02 : 0x00));
-            data.Add(0x00);
-            data.Add((byte)(leds & 0xff));
-            data.Add((byte)((leds >> 8) & 0xff));
-        }
-
-        var packet = new List<byte>(new byte[6]);
-        packet.Add((byte)channels.Length);
-        packet.AddRange(data);
-        return packet.ToArray();
-    }
-
     [Fact]
-    public void GetTotalLedCount_SumsConnectedChannels()
+    public void KnownLinkDevices_ReportExpectedLedChannels()
     {
-        var packet = BuildLedCountPacket((true, 34), (true, 18));
-
-        var total = LinkHubDataReader.GetTotalLedCount(packet);
-
-        Assert.Equal(52, total);
-    }
-
-    [Fact]
-    public void GetTotalLedCount_IgnoresDisconnectedChannels()
-    {
-        var packet = BuildLedCountPacket((true, 34), (false, 999), (true, 8));
-
-        var total = LinkHubDataReader.GetTotalLedCount(packet);
-
-        Assert.Equal(42, total);
-    }
-
-    [Fact]
-    public void GetTotalLedCount_CapsPerChannelAtFifty()
-    {
-        var packet = BuildLedCountPacket((true, 60));
-
-        var total = LinkHubDataReader.GetTotalLedCount(packet);
-
-        Assert.Equal(50, total);
+        Assert.Equal(34, KnownLinkDevices.Find(LinkDeviceModel.FanQxSeries, 0x00)!.LedChannels);
+        Assert.Equal(8, KnownLinkDevices.Find(LinkDeviceModel.FanRxRgbSeries, 0x00)!.LedChannels);
+        Assert.Equal(8, KnownLinkDevices.Find(LinkDeviceModel.FanRxMaxRgbSeries, 0x00)!.LedChannels);
+        Assert.Equal(20, KnownLinkDevices.Find(LinkDeviceModel.LiquidCoolerTitanSeries, 0x00)!.LedChannels);
+        Assert.Equal(0, KnownLinkDevices.Find(LinkDeviceModel.CapSwapModuleVrmFan, 0x00)!.LedChannels);
+        Assert.Equal(0, KnownLinkDevices.Find(LinkDeviceModel.FanRxSeries, 0x00)!.LedChannels);
     }
 
     [Fact]
