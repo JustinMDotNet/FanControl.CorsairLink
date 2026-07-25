@@ -17,59 +17,101 @@ public class ICueLinkLightingTests
     }
 
     [Fact]
-    public void CreateColorData_RepeatsColorPerLed()
+    public void CreateColorData_WritesRgbTripletPerLed()
     {
-        var data = LinkHubDataWriter.CreateColorData(3, new RgbColor(10, 20, 30));
+        var colors = new[]
+        {
+            new RgbColor(10, 20, 30),
+            new RgbColor(40, 50, 60),
+        };
 
-        Assert.Equal(new byte[] { 10, 20, 30, 10, 20, 30, 10, 20, 30 }, data);
+        var data = LinkHubDataWriter.CreateColorData(colors);
+
+        Assert.Equal(new byte[] { 10, 20, 30, 40, 50, 60 }, data);
     }
 
     [Fact]
-    public void ColorCycleLightingEffect_SingleColor_AppliesBrightness()
+    public void GradientFlow_SingleColor_FillsAllLedsWithBrightness()
     {
-        var effect = new ColorCycleLightingEffect(new[] { new RgbColor(200, 100, 50) }, TimeSpan.FromSeconds(4), 50);
+        var effect = new GradientFlowLightingEffect(new[] { new RgbColor(200, 100, 50) }, TimeSpan.FromSeconds(4), 50);
+        var buffer = new RgbColor[4];
 
-        var color = effect.GetColor(TimeSpan.FromSeconds(1.3));
+        effect.Render(TimeSpan.FromSeconds(1.3), buffer);
 
-        Assert.Equal(100, color.R);
-        Assert.Equal(50, color.G);
-        Assert.Equal(25, color.B);
+        foreach (var color in buffer)
+        {
+            Assert.Equal(100, color.R);
+            Assert.Equal(50, color.G);
+            Assert.Equal(25, color.B);
+        }
     }
 
     [Fact]
-    public void ColorCycleLightingEffect_ReturnsPaletteColorsAtStops()
+    public void GradientFlow_ShowsAllPaletteColorsSimultaneously()
     {
-        var effect = new ColorCycleLightingEffect(
+        // 4 LEDs, 4 colors, phase 0 => each LED sits exactly on a palette stop
+        var effect = new GradientFlowLightingEffect(
+            new[]
+            {
+                new RgbColor(255, 255, 255),
+                new RgbColor(0, 255, 255),
+                new RgbColor(255, 0, 255),
+                new RgbColor(255, 255, 0),
+            },
+            TimeSpan.FromSeconds(4),
+            100);
+        var buffer = new RgbColor[4];
+
+        effect.Render(TimeSpan.Zero, buffer);
+
+        Assert.Equal(new byte[] { 255, 255, 255 }, new[] { buffer[0].R, buffer[0].G, buffer[0].B });
+        Assert.Equal(new byte[] { 0, 255, 255 }, new[] { buffer[1].R, buffer[1].G, buffer[1].B });
+        Assert.Equal(new byte[] { 255, 0, 255 }, new[] { buffer[2].R, buffer[2].G, buffer[2].B });
+        Assert.Equal(new byte[] { 255, 255, 0 }, new[] { buffer[3].R, buffer[3].G, buffer[3].B });
+    }
+
+    [Fact]
+    public void GradientFlow_ScrollsOverTime()
+    {
+        var effect = new GradientFlowLightingEffect(
+            new[]
+            {
+                new RgbColor(255, 255, 255),
+                new RgbColor(0, 255, 255),
+                new RgbColor(255, 0, 255),
+                new RgbColor(255, 255, 0),
+            },
+            TimeSpan.FromSeconds(4),
+            100);
+        var buffer = new RgbColor[4];
+
+        // after one full cycle LED 0 returns to the first stop; after a quarter it advances one stop
+        effect.Render(TimeSpan.FromSeconds(1), buffer); // phase = 0.25
+
+        Assert.Equal(new byte[] { 0, 255, 255 }, new[] { buffer[0].R, buffer[0].G, buffer[0].B });
+    }
+
+    [Fact]
+    public void GradientFlow_InterpolatesBetweenStops()
+    {
+        var effect = new GradientFlowLightingEffect(
             new[] { new RgbColor(255, 0, 0), new RgbColor(0, 0, 255) },
             TimeSpan.FromSeconds(4),
             100);
+        var buffer = new RgbColor[4];
 
-        var atStart = effect.GetColor(TimeSpan.Zero);
-        var atHalf = effect.GetColor(TimeSpan.FromSeconds(2));
+        effect.Render(TimeSpan.Zero, buffer);
 
-        Assert.Equal(new byte[] { 255, 0, 0 }, new[] { atStart.R, atStart.G, atStart.B });
-        Assert.Equal(new byte[] { 0, 0, 255 }, new[] { atHalf.R, atHalf.G, atHalf.B });
+        // 2 colors across 4 LEDs: LED 1 sits at position 0.25 => scaled 0.5 => half red->blue
+        Assert.Equal(128, buffer[1].R);
+        Assert.Equal(0, buffer[1].G);
+        Assert.Equal(128, buffer[1].B);
     }
 
     [Fact]
-    public void ColorCycleLightingEffect_InterpolatesBetweenStops()
-    {
-        var effect = new ColorCycleLightingEffect(
-            new[] { new RgbColor(255, 0, 0), new RgbColor(0, 0, 255) },
-            TimeSpan.FromSeconds(4),
-            100);
-
-        var midpoint = effect.GetColor(TimeSpan.FromSeconds(1));
-
-        Assert.Equal(128, midpoint.R);
-        Assert.Equal(0, midpoint.G);
-        Assert.Equal(128, midpoint.B);
-    }
-
-    [Fact]
-    public void ColorCycleLightingEffect_ThrowsWhenNoColors()
+    public void GradientFlow_ThrowsWhenNoColors()
     {
         Assert.Throws<ArgumentException>(() =>
-            new ColorCycleLightingEffect(Array.Empty<RgbColor>(), TimeSpan.FromSeconds(4), 100));
+            new GradientFlowLightingEffect(Array.Empty<RgbColor>(), TimeSpan.FromSeconds(4), 100));
     }
 }

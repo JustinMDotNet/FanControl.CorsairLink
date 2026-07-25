@@ -191,9 +191,10 @@ public sealed class ICueLinkHubDevice : DeviceBase
 
             _needsColorEndpointSetup = true;
 
-            var effect = new ColorCycleLightingEffect(_lightingColors, _lightingCycleDuration, _lightingBrightness);
+            var effect = new GradientFlowLightingEffect(_lightingColors, _lightingCycleDuration, _lightingBrightness);
             _lightingController = new ICueLinkHubLightingController(
                 effect,
+                _totalLedCount,
                 TimeSpan.FromMilliseconds(LIGHTING_FRAME_INTERVAL_MS),
                 WriteLightingFrame,
                 LogError);
@@ -543,14 +544,14 @@ public sealed class ICueLinkHubDevice : DeviceBase
         return total;
     }
 
-    private void WriteLightingFrame(RgbColor color)
+    private void WriteLightingFrame(RgbColor[] colors)
     {
         if (_totalLedCount <= 0)
         {
             return;
         }
 
-        var rgbData = LinkHubDataWriter.CreateColorData(_totalLedCount, color);
+        var rgbData = LinkHubDataWriter.CreateColorData(colors);
         var writeBuf = LinkHubDataWriter.CreateWriteData(DataTypes.SetColor, rgbData);
 
         using (_guardManager.AwaitExclusiveAccess())

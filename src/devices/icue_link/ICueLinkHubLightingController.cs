@@ -12,8 +12,9 @@ internal sealed class ICueLinkHubLightingController
     private const int MaxLoggedConsecutiveErrors = 3;
 
     private readonly ILinkHubLightingEffect _effect;
+    private readonly int _ledCount;
     private readonly TimeSpan _frameInterval;
-    private readonly Action<RgbColor> _renderFrame;
+    private readonly Action<RgbColor[]> _renderFrame;
     private readonly Action<Exception> _onError;
     private readonly CancellationTokenSource _cts = new();
 
@@ -21,11 +22,13 @@ internal sealed class ICueLinkHubLightingController
 
     public ICueLinkHubLightingController(
         ILinkHubLightingEffect effect,
+        int ledCount,
         TimeSpan frameInterval,
-        Action<RgbColor> renderFrame,
+        Action<RgbColor[]> renderFrame,
         Action<Exception> onError)
     {
         _effect = effect;
+        _ledCount = ledCount;
         _frameInterval = frameInterval;
         _renderFrame = renderFrame;
         _onError = onError;
@@ -67,12 +70,14 @@ internal sealed class ICueLinkHubLightingController
         var stopwatch = Stopwatch.StartNew();
         var token = _cts.Token;
         var consecutiveErrors = 0;
+        var buffer = new RgbColor[_ledCount];
 
         while (!token.IsCancellationRequested)
         {
             try
             {
-                _renderFrame(_effect.GetColor(stopwatch.Elapsed));
+                _effect.Render(stopwatch.Elapsed, buffer);
+                _renderFrame(buffer);
                 consecutiveErrors = 0;
             }
             catch (Exception ex)
