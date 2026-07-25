@@ -1,56 +1,42 @@
 namespace CorsairLink.Devices.ICueLink;
 
 /// <summary>
-/// Reproduces Corsair's "Watercolor" effect for the iCUE LINK hub. The color
-/// ramp (a soft magenta -> white -> yellow -> green -> cyan -> white wash with
-/// pulsing saturation) was sampled from iCUE's own USB output to the hub and is
-/// stored as a lookup table. The table is spread as a gradient across each RGB
-/// device's LEDs and scrolled over time, with a per-device phase offset so the
-/// devices drift out of sync - matching how iCUE renders the effect.
+/// Reproduces a soft "Watercolor" lighting effect for the iCUE LINK hub. Each
+/// device shows a continuous, low-saturation hue sweep across its own LEDs that
+/// scrolls over time, so pastel colors flow smoothly around every fan. Using a
+/// constant saturation (no sharp features) keeps the gradient band-free and
+/// avoids the visible stepping a lookup-table ramp produces.
+///
+/// The pastel-hue-sweep approach mirrors the community OpenLinkHub project''s
+/// interpretation of Watercolor; the ~0.4 saturation also matches the average
+/// saturation measured from iCUE''s own Watercolor USB output.
+///
 /// Used to keep the iCUE LINK hub illuminated after the plugin switches it to
 /// software-controlled mode.
 /// </summary>
 public sealed class WatercolorLightingEffect : ILinkHubLightingEffect
 {
-    // one full period of iCUE's Watercolor color ramp (R,G,B per entry),
-    // captured from iCUE's USB frames to the hub
-    private static readonly byte[] Ramp = new byte[]
-    {
-        0xff,0x1e,0xce, 0xff,0x14,0xcc, 0xff,0x0c,0xcb, 0xff,0x0a,0xca, 0xff,0x0b,0xca, 0xff,0x12,0xcc, 0xff,0x1a,0xce, 0xff,0x23,0xcf,
-        0xff,0x2e,0xd2, 0xff,0x3b,0xd4, 0xff,0x45,0xd7, 0xff,0x4f,0xd9, 0xff,0x58,0xdb, 0xff,0x62,0xdd, 0xff,0x6b,0xdf, 0xff,0x74,0xe1,
-        0xff,0x7e,0xe4, 0xff,0x88,0xe6, 0xff,0x92,0xe8, 0xff,0x9c,0xea, 0xff,0xa5,0xec, 0xff,0xaf,0xee, 0xff,0xb9,0xf0, 0xff,0xc4,0xf3,
-        0xff,0xcf,0xf5, 0xff,0xd8,0xf6, 0xff,0xe1,0xf8, 0xff,0xea,0xf9, 0xff,0xf2,0xfa, 0xff,0xf7,0xf7, 0xff,0xfc,0xf2, 0xff,0xfd,0xe8,
-        0xff,0xfe,0xdf, 0xff,0xff,0xd6, 0xff,0xff,0xcc, 0xff,0xff,0xc2, 0xff,0xff,0xb8, 0xff,0xff,0xad, 0xff,0xff,0xa3, 0xff,0xff,0x99,
-        0xff,0xff,0x8f, 0xff,0xff,0x85, 0xff,0xff,0x7b, 0xff,0xff,0x71, 0xff,0xff,0x68, 0xff,0xff,0x5f, 0xff,0xff,0x55, 0xff,0xff,0x4a,
-        0xff,0xff,0x40, 0xff,0xff,0x36, 0xff,0xff,0x2d, 0xff,0xff,0x23, 0xff,0xff,0x19, 0xfc,0xfe,0x13, 0xf9,0xfe,0x10, 0xf2,0xfc,0x14,
-        0xea,0xfa,0x18, 0xe3,0xf9,0x1e, 0xda,0xf7,0x26, 0xd0,0xf5,0x2f, 0xc6,0xf3,0x39, 0xbc,0xf0,0x43, 0xb1,0xee,0x4e, 0xa5,0xeb,0x5a,
-        0x9c,0xea,0x62, 0x94,0xe8,0x6b, 0x8b,0xe6,0x74, 0x82,0xe4,0x7d, 0x7a,0xe2,0x86, 0x70,0xe0,0x8f, 0x63,0xdd,0x9c, 0x58,0xdb,0xa7,
-        0x4d,0xd9,0xb2, 0x43,0xd7,0xbc, 0x39,0xd4,0xc6, 0x2f,0xd2,0xd0, 0x26,0xd0,0xd9, 0x1e,0xce,0xe2, 0x17,0xcd,0xe9, 0x15,0xcc,0xef,
-        0x13,0xcc,0xf4, 0x14,0xcc,0xfa, 0x18,0xcd,0xfd, 0x22,0xcf,0xfe, 0x2b,0xd1,0xfe, 0x32,0xd3,0xff, 0x3b,0xd5,0xff, 0x44,0xd7,0xff,
-        0x4e,0xd9,0xff, 0x58,0xdb,0xff, 0x63,0xde,0xff, 0x6e,0xe0,0xff, 0x78,0xe2,0xff, 0x82,0xe4,0xff, 0x8c,0xe6,0xff, 0x96,0xe8,0xff,
-        0xa0,0xeb,0xff, 0xa9,0xed,0xff, 0xb1,0xee,0xff, 0xbb,0xf0,0xff, 0xc5,0xf3,0xff, 0xcf,0xf5,0xff, 0xd8,0xf7,0xff, 0xe1,0xf9,0xff,
-        0xeb,0xfa,0xff, 0xf1,0xf9,0xfe, 0xf7,0xf6,0xfe, 0xfa,0xf0,0xfc, 0xfc,0xe8,0xfa, 0xfe,0xde,0xf8, 0xfe,0xd5,0xf6, 0xff,0xcd,0xf4,
-        0xff,0xc5,0xf2, 0xff,0xbb,0xf0, 0xff,0xb0,0xee, 0xff,0xa5,0xec, 0xff,0x9a,0xe9, 0xff,0x90,0xe7, 0xff,0x85,0xe5, 0xff,0x7b,0xe2,
-        0xff,0x72,0xe0, 0xff,0x68,0xde, 0xff,0x60,0xdd, 0xff,0x56,0xda, 0xff,0x4a,0xd8, 0xff,0x41,0xd6, 0xff,0x38,0xd4, 0xff,0x2b,0xd1,
-    };
-
-    private const int RampLength = 128;
-
-    // LEDs that one full color period spans across a device's ring (iCUE's
-    // spatial wavelength was ~16 LEDs)
-    private const double LedsPerPeriod = 16.0;
+    // portion of the full hue wheel shown across a single device at one instant;
+    // less than a full wheel keeps neighbouring LEDs close in color (smoother)
+    private const double HueSpreadPerDevice = 180.0;
 
     private readonly IReadOnlyList<int> _deviceLedCounts;
     private readonly double _cycleSecondsInverse;
     private readonly double _deviceCountInverse;
-    private readonly double _brightness;
+    private readonly double _saturation;
+    private readonly double _value;
 
-    public WatercolorLightingEffect(IReadOnlyList<int> deviceLedCounts, TimeSpan cycleDuration, int brightnessPercent)
+    public WatercolorLightingEffect(
+        IReadOnlyList<int> deviceLedCounts,
+        TimeSpan cycleDuration,
+        int brightnessPercent,
+        int saturationPercent = 40)
     {
         _deviceLedCounts = deviceLedCounts ?? Array.Empty<int>();
         _cycleSecondsInverse = 1d / Math.Max(0.5, cycleDuration.TotalSeconds);
         _deviceCountInverse = _deviceLedCounts.Count > 0 ? 1d / _deviceLedCounts.Count : 0d;
-        _brightness = Utils.Clamp(brightnessPercent, 0, 100) / 100d;
+        _saturation = Utils.Clamp(saturationPercent, 0, 100) / 100d;
+        _value = Utils.Clamp(brightnessPercent, 0, 100) / 100d;
     }
 
     public void Render(TimeSpan elapsed, RgbColor[] buffer)
@@ -60,21 +46,21 @@ public sealed class WatercolorLightingEffect : ILinkHubLightingEffect
             return;
         }
 
-        // scroll the ramp over time; one cycle advances a full period
-        var timePhase = elapsed.TotalSeconds * _cycleSecondsInverse;
+        // scroll the hue over time; one cycle sweeps a full 360 degrees
+        var huePhase = elapsed.TotalSeconds * _cycleSecondsInverse * 360d;
         var index = 0;
         var deviceIndex = 0;
 
         foreach (var leds in _deviceLedCounts)
         {
-            // stagger devices so they are not all showing the same colors at once
-            var deviceOffset = deviceIndex * _deviceCountInverse;
+            // offset each device so they are not all the same color at once
+            var deviceHueOffset = deviceIndex * _deviceCountInverse * 360d;
+            var spreadPerLed = leds > 0 ? HueSpreadPerDevice / leds : 0d;
 
             for (var j = 0; j < leds && index < buffer.Length; j++)
             {
-                // spatial position within this device plus the scrolling time phase
-                var position = j / LedsPerPeriod - timePhase + deviceOffset;
-                buffer[index++] = Sample(position);
+                var hue = j * spreadPerLed + huePhase + deviceHueOffset;
+                buffer[index++] = HsvToRgb(hue, _saturation, _value);
             }
 
             deviceIndex++;
@@ -83,30 +69,46 @@ public sealed class WatercolorLightingEffect : ILinkHubLightingEffect
         // fill any remainder so no LED is left uninitialized
         while (index < buffer.Length)
         {
-            buffer[index++] = Sample(-timePhase);
+            buffer[index++] = HsvToRgb(huePhase, _saturation, _value);
         }
     }
 
-    private RgbColor Sample(double periodPosition)
+    private static RgbColor HsvToRgb(double hue, double saturation, double value)
     {
-        // wrap into [0,1) then map to the ramp with linear interpolation
-        periodPosition -= Math.Floor(periodPosition);
-        var scaled = periodPosition * RampLength;
-        var i0 = (int)scaled % RampLength;
-        var i1 = (i0 + 1) % RampLength;
-        var frac = scaled - i0;
+        hue -= 360d * Math.Floor(hue / 360d); // wrap into [0,360)
+        var c = value * saturation;
+        var x = c * (1 - Math.Abs(hue / 60d % 2 - 1));
+        var m = value - c;
 
-        var o0 = i0 * 3;
-        var o1 = i1 * 3;
-
-        var r = (Ramp[o0] + (Ramp[o1] - Ramp[o0]) * frac) * _brightness;
-        var g = (Ramp[o0 + 1] + (Ramp[o1 + 1] - Ramp[o0 + 1]) * frac) * _brightness;
-        var b = (Ramp[o0 + 2] + (Ramp[o1 + 2] - Ramp[o0 + 2]) * frac) * _brightness;
+        double r, g, b;
+        if (hue < 60)
+        {
+            r = c; g = x; b = 0;
+        }
+        else if (hue < 120)
+        {
+            r = x; g = c; b = 0;
+        }
+        else if (hue < 180)
+        {
+            r = 0; g = c; b = x;
+        }
+        else if (hue < 240)
+        {
+            r = 0; g = x; b = c;
+        }
+        else if (hue < 300)
+        {
+            r = x; g = 0; b = c;
+        }
+        else
+        {
+            r = c; g = 0; b = x;
+        }
 
         return new RgbColor(
-            (byte)Utils.Clamp((int)Math.Round(r), 0, 255),
-            (byte)Utils.Clamp((int)Math.Round(g), 0, 255),
-            (byte)Utils.Clamp((int)Math.Round(b), 0, 255));
+            (byte)Utils.Clamp((int)Math.Round((r + m) * 255), 0, 255),
+            (byte)Utils.Clamp((int)Math.Round((g + m) * 255), 0, 255),
+            (byte)Utils.Clamp((int)Math.Round((b + m) * 255), 0, 255));
     }
 }
-
