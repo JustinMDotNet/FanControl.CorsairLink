@@ -180,8 +180,9 @@ public sealed class ICueLinkHubDevice : DeviceBase
     {
         try
         {
-            _totalLedCount = CalculateTotalLedCount();
-            LogInfo($"Lighting: {_totalLedCount} LED(s) detected");
+            var fanLedCounts = GetRgbDeviceLedCounts();
+            _totalLedCount = fanLedCounts.Sum();
+            LogInfo($"Lighting: {_totalLedCount} LED(s) across {fanLedCounts.Count} device(s) detected");
 
             if (_totalLedCount <= 0)
             {
@@ -191,7 +192,7 @@ public sealed class ICueLinkHubDevice : DeviceBase
 
             _needsColorEndpointSetup = true;
 
-            var effect = new GradientFlowLightingEffect(_lightingColors, _lightingCycleDuration, _lightingBrightness);
+            var effect = new PerFanColorCycleLightingEffect(_lightingColors, fanLedCounts, _lightingCycleDuration, _lightingBrightness);
             _lightingController = new ICueLinkHubLightingController(
                 effect,
                 _totalLedCount,
@@ -533,15 +534,21 @@ public sealed class ICueLinkHubDevice : DeviceBase
         }
     }
 
-    private int CalculateTotalLedCount()
+    private IReadOnlyList<int> GetRgbDeviceLedCounts()
     {
-        var total = 0;
-        foreach (var (_, knownDevice) in _channels.Values)
+        // ordered by channel to match the flat color buffer the hub distributes
+        // sequentially; devices with no LEDs contribute nothing and are skipped
+        var counts = new List<int>();
+        foreach (var channel in _channels.Keys.OrderBy(k => k))
         {
-            total += knownDevice.LedChannels;
+            var leds = _channels[channel].KnownDevice.LedChannels;
+            if (leds > 0)
+            {
+                counts.Add(leds);
+            }
         }
 
-        return total;
+        return counts;
     }
 
     private void WriteLightingFrame(RgbColor[] colors)
