@@ -38,7 +38,7 @@ public class ICueLinkLightingTests
 
         effect.Render(TimeSpan.FromSeconds(0.5), buffer);
 
-        // every LED gets a lit color (the ramp has no black entries)
+        // the palette has no black entries, so every LED should be lit
         foreach (var color in buffer)
         {
             Assert.True(color.R + color.G + color.B > 0);
@@ -46,16 +46,19 @@ public class ICueLinkLightingTests
     }
 
     [Fact]
-    public void Watercolor_ProducesGradientAcrossADevice()
+    public void Watercolor_ShowsExactPaletteStopsAcrossADevice()
     {
+        // a 16-LED device spans one full palette loop, so at t=0 the four stops
+        // (cyan, magenta, yellow, white) land exactly on LEDs 0, 4, 8 and 12
         var effect = new WatercolorLightingEffect(new[] { 16 }, TimeSpan.FromSeconds(4), 100);
         var buffer = new RgbColor[16];
 
         effect.Render(TimeSpan.Zero, buffer);
 
-        // a device spanning a full period should not be a single flat color
-        var distinct = buffer.Select(c => (c.R, c.G, c.B)).Distinct().Count();
-        Assert.True(distinct > 4, "expected a gradient across the device");
+        Assert.Equal(new byte[] { 0, 255, 255 }, new[] { buffer[0].R, buffer[0].G, buffer[0].B });
+        Assert.Equal(new byte[] { 255, 0, 255 }, new[] { buffer[4].R, buffer[4].G, buffer[4].B });
+        Assert.Equal(new byte[] { 255, 255, 0 }, new[] { buffer[8].R, buffer[8].G, buffer[8].B });
+        Assert.Equal(new byte[] { 255, 255, 255 }, new[] { buffer[12].R, buffer[12].G, buffer[12].B });
     }
 
     [Fact]

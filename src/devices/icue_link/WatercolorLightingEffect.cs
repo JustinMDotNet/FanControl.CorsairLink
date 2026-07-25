@@ -1,12 +1,12 @@
 namespace CorsairLink.Devices.ICueLink;
 
 /// <summary>
-/// Reproduces iCUE''s "Watercolor" effect for the iCUE LINK hub. iCUE cycles a
+/// Reproduces iCUE's "Watercolor" effect for the iCUE LINK hub. iCUE cycles a
 /// soft loop of cyan, magenta, yellow and white whose transitions pass through
 /// pastel midtones - the behaviour of linear RGB interpolation around those
-/// colors, which was confirmed by sampling iCUE''s own USB output.
+/// colors, which was confirmed by sampling iCUE's own USB output.
 ///
-/// The palette loop is spread as a gradient across each device''s LEDs and
+/// The palette loop is spread as a gradient across each device's LEDs and
 /// scrolled over time so the colors flow smoothly around every fan. Linear
 /// interpolation keeps the gradient band-free (no visible stepping).
 ///
@@ -15,7 +15,7 @@ namespace CorsairLink.Devices.ICueLink;
 /// </summary>
 public sealed class WatercolorLightingEffect : ILinkHubLightingEffect
 {
-    // iCUE''s Watercolor palette (measured hue clusters plus a white stop)
+    // iCUE's Watercolor palette (measured hue clusters plus a white stop)
     private static readonly RgbColor[] DefaultPalette =
     {
         new RgbColor(0, 255, 255),     // cyan
@@ -24,26 +24,26 @@ public sealed class WatercolorLightingEffect : ILinkHubLightingEffect
         new RgbColor(255, 255, 255),   // white
     };
 
-    // LEDs that one full palette loop spans across a device (iCUE''s measured
-    // spatial wavelength was ~16 LEDs)
-    private const double LedsPerPeriod = 16.0;
+    // number of LEDs one full palette loop spans across a device;
+    // iCUE's measured spatial wavelength was ~16 LEDs
+    private const double LedsPerLoop = 16.0;
 
     private readonly RgbColor[] _palette;
     private readonly IReadOnlyList<int> _deviceLedCounts;
-    private readonly double _cycleSecondsInverse;
-    private readonly double _deviceCountInverse;
+    private readonly double _loopsPerSecond;
+    private readonly double _deviceHueSpacing;
     private readonly double _brightness;
 
     public WatercolorLightingEffect(
         IReadOnlyList<int> deviceLedCounts,
-        TimeSpan cycleDuration,
+        TimeSpan loopDuration,
         int brightnessPercent,
         IReadOnlyList<RgbColor>? palette = null)
     {
         _palette = palette is { Count: > 0 } ? palette.ToArray() : DefaultPalette;
         _deviceLedCounts = deviceLedCounts ?? Array.Empty<int>();
-        _cycleSecondsInverse = 1d / Math.Max(0.5, cycleDuration.TotalSeconds);
-        _deviceCountInverse = _deviceLedCounts.Count > 0 ? 1d / _deviceLedCounts.Count : 0d;
+        _loopsPerSecond = 1d / Math.Max(0.5, loopDuration.TotalSeconds);
+        _deviceHueSpacing = _deviceLedCounts.Count > 0 ? 1d / _deviceLedCounts.Count : 0d;
         _brightness = Utils.Clamp(brightnessPercent, 0, 100) / 100d;
     }
 
@@ -54,54 +54,57 @@ public sealed class WatercolorLightingEffect : ILinkHubLightingEffect
             return;
         }
 
-        // scroll the palette loop over time; one cycle advances a full loop
-        var timePhase = elapsed.TotalSeconds * _cycleSecondsInverse;
-        var index = 0;
+        // fraction of a full palette loop the animation has scrolled through
+        var scrollOffset = elapsed.TotalSeconds * _loopsPerSecond;
+        var ledIndex = 0;
         var deviceIndex = 0;
 
-        foreach (var leds in _deviceLedCounts)
+        foreach (var deviceLedCount in _deviceLedCounts)
         {
-            // offset each device so they are not all the same color at once
-            var deviceOffset = deviceIndex * _deviceCountInverse;
+            // stagger each device so they are not all showing the same color
+            var deviceOffset = deviceIndex * _deviceHueSpacing;
 
-            for (var j = 0; j < leds && index < buffer.Length; j++)
+            for (var led = 0; led < deviceLedCount && ledIndex < buffer.Length; led++)
             {
-                var position = j / LedsPerPeriod - timePhase + deviceOffset;
-                buffer[index++] = Sample(position);
+                var loopPosition = led / LedsPerLoop - scrollOffset + deviceOffset;
+                buffer[ledIndex++] = SamplePalette(loopPosition);
             }
 
             deviceIndex++;
         }
 
-        // fill any remainder so no LED is left uninitialized
-        while (index < buffer.Length)
+        // fill any remaining LEDs (e.g. a count mismatch) so none are left dark
+        while (ledIndex < buffer.Length)
         {
-            buffer[index++] = Sample(-timePhase);
+            buffer[ledIndex++] = SamplePalette(-scrollOffset);
         }
     }
 
-    private RgbColor Sample(double position)
+    /// <summary>
+    /// Maps a position along the looping palette (any real number, wrapped into
+    /// [0,1)) to an interpolated color.
+    /// </summary>
+    private RgbColor SamplePalette(double loopPosition)
     {
-        var count = _palette.Count();
-        position -= Math.Floor(position); // wrap into [0,1)
+        var wrapped = loopPosition - Math.Floor(loopPosition);
+        var scaled = wrapped * _palette.Length;
 
-        var scaled = position * count;
-        var i0 = (int)scaled % count;
-        var i1 = (i0 + 1) % count;
-        var frac = scaled - Math.Floor(scaled);
+        var fromIndex = (int)scaled % _palette.Length;
+        var toIndex = (fromIndex + 1) % _palette.Length;
+        var fraction = scaled - fromIndex;
 
-        var from = _palette[i0];
-        var to = _palette[i1];
+        var from = _palette[fromIndex];
+        var to = _palette[toIndex];
 
         return new RgbColor(
-            Blend(from.R, to.R, frac),
-            Blend(from.G, to.G, frac),
-            Blend(from.B, to.B, frac));
+            Interpolate(from.R, to.R, fraction),
+            Interpolate(from.G, to.G, fraction),
+            Interpolate(from.B, to.B, fraction));
     }
 
-    private byte Blend(byte from, byte to, double frac)
+    private byte Interpolate(byte from, byte to, double fraction)
     {
-        var value = (from + (to - from) * frac) * _brightness;
+        var value = (from + (to - from) * fraction) * _brightness;
         return (byte)Utils.Clamp((int)Math.Round(value), 0, 255);
     }
 }
