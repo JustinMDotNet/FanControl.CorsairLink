@@ -88,8 +88,8 @@ public sealed class ICueLinkHubDevice : DeviceBase
         _lightingEnabled = options.LightingEnabled;
         _lightingBrightness = Utils.Clamp(options.LightingBrightness ?? 100, 0, 100);
         // iCUE's Watercolor completes one color cycle in ~3.3s (measured from its
-        // USB frame timing); default a touch slower for a calmer, smoother look
-        var cycleSeconds = options.LightingCycleSeconds.HasValue ? options.LightingCycleSeconds.Value : 4.5;
+        // USB frame timing); default a touch faster for a livelier flow
+        var cycleSeconds = options.LightingCycleSeconds.HasValue ? options.LightingCycleSeconds.Value : 3.0;
         _lightingCycleDuration = TimeSpan.FromSeconds(Math.Max(0.5, cycleSeconds));
     }
 
